@@ -12,17 +12,17 @@ import java.util.ArrayDeque
 
 // Not a companion object: its synthetic constructor references DefaultConstructorMarker, which is
 // not public in older kotlin-stdlib versions.
-private object RuntimeContextMarkerKey {
-  val applied = ThreadLocal<RuntimeContextMarkerApplication?>()
+private object ScopeHandoffKey {
+  val applied = ThreadLocal<ScopeHandoff?>()
 }
 
-// The innermost application of a marker on this thread, if the runtime is running a coroutine with
-// a callee's context on it.
-fun currentRuntimeContextMarkerApplication(): RuntimeContextMarkerApplication? = RuntimeContextMarkerKey.applied.get()
+// The innermost handoff open on this thread, if the runtime is running a coroutine with a callee's
+// context on it.
+fun currentScopeHandoff(): ScopeHandoff? = ScopeHandoffKey.applied.get()
 
-// One application of a marker on a thread. Scopes deferred to it are closed when the runtime
-// restores it, most recent first.
-class RuntimeContextMarkerApplication internal constructor(private val previous: RuntimeContextMarkerApplication?) {
+// One handoff on a thread. Scopes deferred to it are closed when the runtime restores the callee's
+// context, most recent first.
+class ScopeHandoff internal constructor(private val previous: ScopeHandoff?) {
   private var deferred: ArrayDeque<Scope>? = null
   private var restored = false
 
@@ -46,25 +46,25 @@ class RuntimeContextMarkerApplication internal constructor(private val previous:
         scopes.pop().close()
       }
     }
-    RuntimeContextMarkerKey.applied.set(previous)
+    ScopeHandoffKey.applied.set(previous)
     return true
   }
 }
 
-// The span's context, as given to the span's thread context element. Making it current opens an
-// application that the caller's deferred scopes are handed to; closing the scope closes them first,
-// then the span's own scope.
+// The span's context, as given to the span's thread context element. Making it current opens a
+// handoff that the caller's scopes are deferred to; closing the scope closes them first, then the
+// span's own scope.
 class HandoffContext(private val delegate: Context) : Context {
   override fun <V : Any?> get(key: ContextKey<V>): V? = delegate.get(key)
 
   override fun <V : Any?> with(k1: ContextKey<V>, v1: V): Context = delegate.with(k1, v1)
 
   override fun makeCurrent(): Scope {
-    val application = RuntimeContextMarkerApplication(RuntimeContextMarkerKey.applied.get())
-    RuntimeContextMarkerKey.applied.set(application)
+    val handoff = ScopeHandoff(ScopeHandoffKey.applied.get())
+    ScopeHandoffKey.applied.set(handoff)
     val scope = delegate.makeCurrent()
     return Scope {
-      if (application.restore()) {
+      if (handoff.restore()) {
         scope.close()
       }
     }
