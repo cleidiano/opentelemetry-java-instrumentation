@@ -5,14 +5,14 @@
 
 package io.opentelemetry.javaagent.instrumentation.kotlinxcoroutines.v1_0.instrumentationannotations
 
+import io.opentelemetry.context.Context
+import io.opentelemetry.context.ContextKey
 import io.opentelemetry.context.Scope
-import kotlinx.coroutines.ThreadContextElement
 import java.util.ArrayDeque
-import kotlin.coroutines.CoroutineContext
 
 // Not a companion object: its synthetic constructor references DefaultConstructorMarker, which is
 // not public in older kotlin-stdlib versions.
-private object RuntimeContextMarkerKey : CoroutineContext.Key<RuntimeContextMarker> {
+private object RuntimeContextMarkerKey {
   val applied = ThreadLocal<RuntimeContextMarkerApplication?>()
 }
 
@@ -34,10 +34,11 @@ class RuntimeContextMarkerApplication internal constructor(private val previous:
   // Returns whether the scope was still deferred, that is, not closed by the runtime yet.
   fun undefer(scope: Scope): Boolean = deferred?.remove(scope) == true
 
-  internal fun restore() {
+  // Returns false if it was already restored.
+  internal fun restore(): Boolean {
     // UndispatchedCoroutine can replay the restore of a snapshot taken without a dispatcher.
     if (restored) {
-      return
+      return false
     }
     restored = true
     deferred?.let { scopes ->
@@ -46,23 +47,26 @@ class RuntimeContextMarkerApplication internal constructor(private val previous:
       }
     }
     RuntimeContextMarkerKey.applied.set(previous)
+    return true
   }
 }
 
-// Added to the callee's context, so the runtime applies it whenever it runs a coroutine with that
-// context, and, as the last element added, restores it just before the span's scope. A callback that
-// makes the span context current itself does not apply it.
-class RuntimeContextMarker : ThreadContextElement<RuntimeContextMarkerApplication> {
-  override val key: CoroutineContext.Key<RuntimeContextMarker>
-    get() = RuntimeContextMarkerKey
+// The span's context, as given to the span's thread context element. Making it current opens an
+// application that the caller's deferred scopes are handed to; closing the scope closes them first,
+// then the span's own scope.
+class HandoffContext(private val delegate: Context) : Context {
+  override fun <V : Any?> get(key: ContextKey<V>): V? = delegate.get(key)
 
-  override fun updateThreadContext(context: CoroutineContext): RuntimeContextMarkerApplication {
+  override fun <V : Any?> with(k1: ContextKey<V>, v1: V): Context = delegate.with(k1, v1)
+
+  override fun makeCurrent(): Scope {
     val application = RuntimeContextMarkerApplication(RuntimeContextMarkerKey.applied.get())
     RuntimeContextMarkerKey.applied.set(application)
-    return application
-  }
-
-  override fun restoreThreadContext(context: CoroutineContext, oldState: RuntimeContextMarkerApplication) {
-    oldState.restore()
+    val scope = delegate.makeCurrent()
+    return Scope {
+      if (application.restore()) {
+        scope.close()
+      }
+    }
   }
 }
