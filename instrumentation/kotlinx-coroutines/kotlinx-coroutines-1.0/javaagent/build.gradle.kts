@@ -118,7 +118,7 @@ testing.suites {
       implementation("io.opentelemetry:opentelemetry-extension-kotlin")
       implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
       implementation(
-        "org.jetbrains.kotlinx:kotlinx-coroutines-core:${baseVersion("1.6.1").orLatest()}",
+        "org.jetbrains.kotlinx:kotlinx-coroutines-core:${(findProperty("probeKotlinx") as String?) ?: baseVersion("1.6.1").orLatest()}",
       )
       implementation(project(":instrumentation-annotations"))
     }
