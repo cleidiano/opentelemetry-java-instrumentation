@@ -204,7 +204,6 @@ public class AnnotationInstrumentationHelper {
     private final Continuation<T> delegate;
     private final CoroutineContext coroutineContext;
     private final ThreadContextElement<Scope> delegateContextElement;
-    private final RuntimeContextMarker runtimeContextMarker = new RuntimeContextMarker();
     private final Context parentContext;
     private final Context spanContext;
     private final Object request;
@@ -213,12 +212,10 @@ public class AnnotationInstrumentationHelper {
     ContextContinuation(
         Continuation<T> delegate, Context spanContext, Context parentContext, Object request) {
       this.delegate = delegate;
-      // the marker must be added last, so that the runtime restores it before the span's scope
       this.coroutineContext =
           delegate
               .getContext()
-              .plus(ContextExtensionsKt.asContextElement(spanContext))
-              .plus(runtimeContextMarker);
+              .plus(ContextExtensionsKt.asContextElement(new HandoffContext(spanContext)));
       this.delegateContextElement =
           (ThreadContextElement<Scope>) ContextExtensionsKt.asContextElement(parentContext);
       this.parentContext = parentContext;
