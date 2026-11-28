@@ -13,11 +13,13 @@ through the `opentelemetry-instrumentation-annotations` selector. This includes 
 `Flow`; their spans end when collection completes.
 
 Instrumentation of functions declared with `suspend`, including suspend functions returning
-`Flow`, is disabled by default. It requires kotlinx-coroutines 1.6.1 or later. A known issue is that
-an annotated suspend function that tail calls `emit` inside a `flow {}` builder fails collection
-([#21159](https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/21159)).
-To enable it:
+`Flow`, is disabled by default and requires kotlinx-coroutines 1.6.1 or later. To enable it:
 
 ```properties
 otel.instrumentation.kotlinx-coroutines-annotations.enabled=true
 ```
+
+With this instrumentation enabled, collecting a `flow {}` throws
+`IllegalStateException: Flow invariant is violated` if a suspend function annotated with
+`@WithSpan` tail-calls `emit`. The flow stops before delivering that value
+([#21159](https://github.com/open-telemetry/opentelemetry-java-instrumentation/issues/21159)).
