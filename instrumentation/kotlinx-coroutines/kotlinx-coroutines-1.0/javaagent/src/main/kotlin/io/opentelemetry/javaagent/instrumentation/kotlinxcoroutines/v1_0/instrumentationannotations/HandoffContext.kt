@@ -34,7 +34,6 @@ class ScopeHandoff internal constructor(private val previous: ScopeHandoff?) {
   // Returns whether the scope was still deferred, that is, not closed by the runtime yet.
   fun undefer(scope: Scope): Boolean = deferred?.remove(scope) == true
 
-  // Returns false if it was already restored.
   internal fun restore(): Boolean {
     // UndispatchedCoroutine can replay the restore of a snapshot taken without a dispatcher.
     if (restored) {

@@ -111,7 +111,7 @@ public class AnnotationInstrumentationHelper {
     // final state (returns anything else besides COROUTINE_SUSPENDED)
     if (continuation == null || result != IntrinsicsKt.getCOROUTINE_SUSPENDED()) {
       instrumenter().end(context, (MethodRequest) request, null, error);
-      if (continuation != null && continuation instanceof SuspendFrame) {
+      if (continuation instanceof SuspendFrame) {
         // The frame doesn't resume when the callee returns synchronously, so release any
         // interception the callee requested before returning.
         ((SuspendFrame) continuation).release();
@@ -204,7 +204,6 @@ public class AnnotationInstrumentationHelper {
     private final Continuation<T> delegate;
     private final CoroutineContext coroutineContext;
     private final ThreadContextElement<Scope> delegateContextElement;
-    private final Context parentContext;
     private final Context spanContext;
     private final Object request;
 
@@ -218,7 +217,6 @@ public class AnnotationInstrumentationHelper {
               .plus(ContextExtensionsKt.asContextElement(new HandoffContext(spanContext)));
       this.delegateContextElement =
           (ThreadContextElement<Scope>) ContextExtensionsKt.asContextElement(parentContext);
-      this.parentContext = parentContext;
       this.spanContext = spanContext;
       this.request = request;
     }
