@@ -204,7 +204,6 @@ public class AnnotationInstrumentationHelper {
     private final Continuation<T> delegate;
     private final CoroutineContext coroutineContext;
     private final ThreadContextElement<Scope> delegateContextElement;
-    private final RuntimeContextMarker runtimeContextMarker = new RuntimeContextMarker();
     private final Context parentContext;
     private final Context spanContext;
     private final Object request;
@@ -213,12 +212,10 @@ public class AnnotationInstrumentationHelper {
     ContextContinuation(
         Continuation<T> delegate, Context spanContext, Context parentContext, Object request) {
       this.delegate = delegate;
-      // the marker must be added last, so that the runtime restores it before the span's scope
       this.coroutineContext =
           delegate
               .getContext()
-              .plus(ContextExtensionsKt.asContextElement(spanContext))
-              .plus(runtimeContextMarker);
+              .plus(ContextExtensionsKt.asContextElement(new HandoffContext(spanContext)));
       this.delegateContextElement =
           (ThreadContextElement<Scope>) ContextExtensionsKt.asContextElement(parentContext);
       this.parentContext = parentContext;
@@ -251,19 +248,17 @@ public class AnnotationInstrumentationHelper {
 
       // When the runtime runs this with the callee's context applied, it may restore that context,
       // including the span's scope, before this method returns, when the caller completes an
-      // undispatched withContext. The runtime restores thread context elements in reverse order
-      // (Kotlin/kotlinx.coroutines#2195) and the marker is added last, so the marker closes the
-      // caller's scope right before the span's scope and the scopes stay in order.
+      // undispatched withContext. The span's scope closes the caller's scope deferred to it right
+      // before its own, so the scopes stay in order.
       Scope scope = delegateContextElement.updateThreadContext(delegate.getContext());
-      RuntimeContextMarkerApplication application =
-          RuntimeContextMarkerKt.currentRuntimeContextMarkerApplication();
-      if (application != null) {
-        application.defer(scope);
+      ScopeHandoff handoff = HandoffContextKt.currentScopeHandoff();
+      if (handoff != null) {
+        handoff.defer(scope);
       }
       try {
         delegate.resumeWith(result);
       } finally {
-        if (application == null || application.undefer(scope)) {
+        if (handoff == null || handoff.undefer(scope)) {
           delegateContextElement.restoreThreadContext(delegate.getContext(), scope);
         }
       }
